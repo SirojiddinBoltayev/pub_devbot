@@ -5,7 +5,11 @@ import 'package:teledart/teledart.dart';
 import 'package:teledart/telegram.dart';
 
 Future<void> main() async {
+  // Pub.dev bot
   String botToken = "6715432790:AAGK-WmS_bp1V463JN9sLUty8yqa4vl5yMs";
+
+  // Siroj Boltayev bot
+  // String botToken = "6330873616:AAE0SoKc93g0VCPrK1rd6UomogLvx31cI4c";
   final username = (await Telegram(botToken).getMe()).username;
 
   var teleDart = TeleDart(botToken, Event(username!));
@@ -19,38 +23,71 @@ Future<void> main() async {
 
   teleDart.onInlineQuery().listen((inlineQuery) async {
     final query = inlineQuery.query;
-    final url = Uri.parse('https://pub.dev/api/search?q=$query');
-    final response = await http.get(url);
+    final urlSearch = Uri.parse('https://pub.dev/api/search?q=$query');
+    final responseSearch = await http.get(urlSearch);
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final packages = data['packages'];
+    if (responseSearch.statusCode == 200) {
+      final dataSearch = json.decode(responseSearch.body);
+      final packagesSearch = dataSearch['packages'];
 
-      final results = List<InlineQueryResult>.from(packages.map((package) {
-        final packageName = package['package'];
-        final score = package['score'] ?? 'N/A';
-        final documentationUrl = package['documentation_url'] ?? 'N/A';
-        final packageDescription = package['description'] ?? 'N/A';
+      final resultsSearch = await Future.wait(
+        packagesSearch.map<Future<InlineQueryResult>>((package) async {
+          final packageName = package['package'];
 
-        final messageText =
-            'Package: $packageName\nScore: $score\n\nDescription: $packageDescription\n\nDocumentation: $documentationUrl';
-
-        return InlineQueryResultArticle(
-          id: packageName,
-          title: packageName,
-          inputMessageContent: InputTextMessageContent(
-            messageText: messageText,
-            parseMode: 'HTML',
-          ),
-        );
-      }));
+          return InlineQueryResultArticle(
+            id: packageName,
+            title: packageName,
+            inputMessageContent: InputTextMessageContent(
+              messageText: await getPackage(
+                packageName: packageName,
+              ),
+              parseMode: 'MARKDOWN',
+            ),
+          );
+        }).toList(),
+      );
 
       teleDart.answerInlineQuery(
         inlineQuery.id,
-        results,
+        resultsSearch.cast<InlineQueryResult>(),
+        button: InlineQueryResultsButton(
+          text: "Pub.dev dan qidirish",
+          webApp: WebAppInfo(url: "https://pub.dev/"),
+        ),
       );
     } else {
-      print('So\'rov muvaffaqiyatsiz tugabdi: ${response.statusCode}');
+      print('So\'rov muvaffaqiyatsiz tugabdi: ${responseSearch.statusCode}');
+      throw Exception();
     }
   });
+}
+
+Future<String> getPackage(
+    {required String packageName,
+    bool isAll = false,
+    bool isDesc = false,
+    bool isNameAndVersion = false}) async {
+  print(packageName);
+  final urlPackage = Uri.parse('https://pub.dev/api/packages/$packageName');
+  final responsePackage = await http.get(urlPackage);
+
+  if (responsePackage.statusCode == 200) {
+    final dataPackage = json.decode(responsePackage.body);
+    // print(dataPackage);
+    final latest = dataPackage['latest']["version"];
+    final description = dataPackage['latest']["pubspec"]["description"];
+    final String installing = "```Flutter\nflutter pub add $packageName\n```";
+    if (isAll) {
+      return '```$packageName: $latest```\n\n**$description**\n\n```\nflutter pub add $packageName\n```';
+    } else if (isNameAndVersion) {
+      return '$packageName: $latest';
+    } else if (isDesc) {
+      return "$description";
+    }
+    return '```$packageName: $latest```\n\n**$description**\n\n```\nflutter pub add $packageName\n```';
+
+    // return '```$packageName: $latest```\n\n**$description**\n\n```\nflutter pub add $packageName\n```';
+  } else {
+    return 'Ma\'lumot olishda xatolik yuz berdi: ${responsePackage.statusCode}';
+  }
 }
